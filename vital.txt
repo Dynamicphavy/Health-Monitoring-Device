@@ -1,0 +1,698 @@
+#define BLYNK_PRINT Serial
+
+// Fill in your Template ID, Device Name and Auth Token from the Blynk Dashboard
+#define BLYNK_TEMPLATE_ID "TMPLxxxxxx"
+#define BLYNK_DEVICE_NAME "Health Monitor"
+#define BLYNK_AUTH_TOKEN "YourAuthToken"
+
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
+#include <Wire.h>
+
+
+static void showTempsOnOLED(float ambientC, float objectC) {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    display.println(F("Temperature"));
+
+    display.setCursor(0, 18);
+    display.print(F("Ambient: "));
+    display.print(ambientC, 1);
+    display.println(F(" C"));
+
+    display.setCursor(0, 34);
+    display.print(F("Object:  "));
+    display.print(objectC, 1);
+    display.println(F(" C"));
+
+    display.display();
+}
+
+void setup() {
+    Serial.begin(115200);
+
+    // I2C init (ESP32 default SDA/SCL, or set your pins with Wire.begin(SDA, SCL))
+    Wire.begin();
+
+    // OLED init (0x3C is the most common SSD1306 I2C address)
+    if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+        Serial.println(F("SSD1306 allocation failed"));
+        for (;;) {
+            delay(10);
+        }
+    }
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    display.println(F("Initializing..."));
+    display.display();
+
+    // MLX90614 init
+    if (!mlx.begin()) {
+        display.clearDisplay();
+        display.setCursor(0, 0);
+        display.println(F("MLX90614 not found"));
+        display.display();
+        Serial.println(F("MLX90614 not found. Check wiring / I2C address."));
+        for (;;) {
+            delay(10);
+        }
+    }
+}
+
+        // Light Configuration
+        byte ledBrightness = 60;
+        byte sampleAverage = 4;
+        byte ledMode = 2;
+        int sampleRate = 100;
+        int pulseWidth = 411;
+        int adcRange = 4096;
+
+double avered = 0;
+double aveir = 0;
+double sumirrms = 0;
+double sumredrms = 0;
+int spo2 = 0;
+double ESpO2 = 0;
+double FSpO2 = 0.7;
+double frate = 0.95;
+int i = 0;
+int Num = 100;
+
+void loop() {
+
+    float ambientC = mlx.readAmbientTempC();
+    float objectC = mlx.readObjectTempC();
+
+    Serial.print(F("Ambient: "));
+    Serial.print(ambientC, 2);
+    Serial.print(F(" C\tObject: "));
+    Serial.print(objectC, 2);
+    Serial.println(F(" C"));
+
+    showTempsOnOLED(ambientC, objectC);
+    delay(500);
+}
+
+// Libraries for MAX30102
+// Ensure you have installed "SparkFun MAX3010x Pulse and Proximity Sensor Library" via Library Manager
+#include "MAX30105.h"
+#include "heartRate.h"
+
+// Libraries for OLED Display (SSD1306)
+// Ensure you have installed "Adafruit SSD1306" and "Adafruit GFX Library"
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// Library for Firebase (ESP32-C3 Compatible)
+// Ensure you have installed "Firebase Arduino Client Library for ESP8266 and ESP32" by Mobizt
+#include <Firebase_ESP_Client.h>
+
+// Provide the token generation process info.
+#include <addons/TokenHelper.h>
+// Provide the RTDB payload printing info and other helper functions.
+#include <addons/RTDBHelper.h>
+
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+#define OLED_RESET    -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// --- WiFi Credentials ---
+char ssid[] = "YourNetworkName";
+char pass[] = "YourPassword";
+
+// --- Firebase Credentials ---
+#define API_KEY "AIzaSyDM9C82uPDtmPktWPE7yOFnFHBkVrXcgJs"
+#define DATABASE_URL "https://wearable-health-device-default-rtdb.firebaseio.com/" 
+
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+bool firebaseReady = false;
+
+// --- Sensor Objects & Variables ---
+
+// 1. MAX30102 (Heart Rate & SpO2)
+MAX30105 particleSensor;
+long lastBeat = 0; // Time at which the last beat occurred
+float beatsPerMinute;
+int beatAvg;
+double spO2 = 98.0; // Default/Placeholder
+
+// 2. MAX30205 (Body Temperature)
+#define MAX30205_ADDRESS 0x48
+
+// 3. ADXL335 (Accelerometer / Step Counter)
+// UPDATED FOR ESP32-C3: Use ADC1 pins (GPIO 0-4)
+const int xPin = 0; // Analog Pin for X (GPIO 0 on C3)
+const int yPin = 1; // Analog Pin for Y (GPIO 1 on C3)
+const int zPin = 2; // Analog Pin for Z (GPIO 2 on C3)
+
+int steps = 0;
+bool stepFlag = false;
+int threshold = 500; 
+
+// --- Alarm Variables ---
+unsigned long lastAlertTime = 0;
+const long alertInterval = 15000; // Limit alerts to once every 15 seconds
+
+// --- Daily Aggregation Variables ---
+unsigned long lastDailyUpload = 0;
+const unsigned long dailyInterval = 86400000; // 24 Hours in milliseconds
+// For testing, you can reduce this to e.g., 60000 (1 minute)
+// const unsigned long dailyInterval = 60000; 
+
+double dailySumTemp = 0;
+long dailySumHR = 0;
+long dailyReadingsCount = 0;
+
+BlynkTimer timer;
+
+// --- Functions ---
+
+// Read Body Temperature from MAX30205
+float readBodyTemperature() {
+  Wire.beginTransmission(MAX30205_ADDRESS);
+  Wire.write(0x00); // Temperature register
+  Wire.endTransmission();
+  
+  Wire.requestFrom(MAX30205_ADDRESS, 2);
+  if (Wire.available() == 2) {
+    uint8_t msb = Wire.read();
+    uint8_t lsb = Wire.read();
+    int16_t rawTemp = ((msb << 8) | lsb) >> 3;
+    return rawTemp * 0.03125;
+  }
+  return 0.0;
+}
+
+// Step Counting Logic
+void checkSteps() {
+  int x = analogRead(xPin);
+  int y = analogRead(yPin);
+  int z = analogRead(zPin);
+  long mag = sqrt(sq(x - 2000) + sq(y - 2000) + sq(z - 2000));
+
+  if (mag > threshold && !stepFlag) {
+    steps++;
+    stepFlag = true;
+    Serial.print("Step detected! Total: ");
+    Serial.println(steps);
+  } else if (mag < threshold - 500) {
+    stepFlag = false;
+  }
+}
+
+// Update OLED Display
+void updateDisplay(float temp, int hr, double spo2, int stepsVal) {
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("Health Monitor");
+  display.setCursor(0, 16);
+  display.print("Temp: "); display.print(temp); display.println(" C");
+  display.setCursor(0, 28);
+  display.print("HR:   "); display.print(hr); display.println(" BPM");
+  display.setCursor(0, 40);
+  display.print("SpO2: "); display.print(spo2); display.println(" %");
+  display.setCursor(0, 52);
+  display.print("Steps: "); display.println(stepsVal);
+  display.display();
+}
+
+// Upload Daily Summary to Firebase
+void uploadDailyData() {
+  if (!firebaseReady) return;
+
+  float avgTemp = 0;
+  int avgHR = 0;
+
+  if (dailyReadingsCount > 0) {
+    avgTemp = dailySumTemp / dailyReadingsCount;
+    avgHR = dailySumHR / dailyReadingsCount;
+  }
+
+  Serial.println("--- Uploading Daily Summary to Firebase ---");
+  
+  // Create a unique path based on time (or just incrementing ID)
+  // Since we don't have NTP time here, we'll use a simple "Day_X" or append
+  // Ideally, use NTP to get a date string like "2023-10-27"
+  String path = "/daily_summary/" + String(millis()); 
+
+  FirebaseJson json;
+  json.set("avg_temp", avgTemp);
+  json.set("avg_hr", avgHR);
+  json.set("total_steps", steps);
+  json.set("uptime_ms", millis());
+
+  if (Firebase.RTDB.setJSON(&fbdo, path.c_str(), &json)) {
+    Serial.println("Firebase Upload Success");
+  } else {
+    Serial.print("Firebase Upload Failed: ");
+    Serial.println(fbdo.errorReason());
+  }
+
+  // Reset Daily Counters
+  dailySumTemp = 0;
+  dailySumHR = 0;
+  dailyReadingsCount = 0;
+  steps = 0; // Reset steps for the new day
+}
+
+// Send Data to Blynk and Update Display
+void sendSensorData() {
+  float tempC = readBodyTemperature();
+  Blynk.virtualWrite(V2, tempC);
+  Blynk.virtualWrite(V3, steps);
+  
+  if (beatAvg > 0) {
+    Blynk.virtualWrite(V0, beatAvg);
+    Blynk.virtualWrite(V1, spO2);
+  }
+  
+  updateDisplay(tempC, beatAvg, spO2, steps);
+
+  // --- Abnormal Vitals Alarm ---
+  if (millis() - lastAlertTime > alertInterval) {
+    bool alertTriggered = false;
+    if (tempC > 0 && (tempC < 36.5 || tempC > 37.3)) {
+      Blynk.logEvent("temp_alert", String("Abnormal Temp: ") + tempC + " C");
+      alertTriggered = true;
+    }
+    if (beatAvg > 0 && (beatAvg < 60 || beatAvg > 100)) {
+      Blynk.logEvent("hr_alert", String("Abnormal HR: ") + beatAvg + " BPM");
+      alertTriggered = true;
+    }
+    if (alertTriggered) lastAlertTime = millis();
+  }
+
+  // --- Daily Aggregation ---
+  if (tempC > 0 && beatAvg > 0) {
+    dailySumTemp += tempC;
+    dailySumHR += beatAvg;
+    dailyReadingsCount++;
+  }
+
+  // Check if 24 hours have passed
+  if (millis() - lastDailyUpload > dailyInterval) {
+    uploadDailyData();
+    lastDailyUpload = millis();
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Initialize Blynk
+  Blynk.config(BLYNK_AUTH_TOKEN);
+  Blynk.connectWifi(ssid, pass);
+
+  // Initialize I2C
+  Wire.begin(); // Uses default SDA/SCL for the board (GPIO 8/9 on C3 usually)
+
+  // Initialize OLED
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
+    Serial.println(F("SSD1306 allocation failed"));
+  } else {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0,0);
+    display.println("Initializing...");
+    display.display();
+  }
+
+  // Initialize MAX30102
+  if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) {
+    Serial.println("MAX30102 not found.");
+  } else {
+    particleSensor.setup();
+    particleSensor.setPulseAmplitudeRed(0x0A);
+    particleSensor.setPulseAmplitudeGreen(0);
+  }
+
+  // Initialize Firebase
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+  
+  // Sign up anonymously
+  if (Firebase.signUp(&config, &auth, "", "")) {
+    Serial.println("Firebase Auth Success");
+    firebaseReady = true;
+  } else {
+    Serial.printf("Firebase Auth Failed: %s\n", config.signer.signupError.message.c_str());
+  }
+  
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+
+  // Setup Timer
+  timer.setInterval(1000L, sendSensorData);
+}
+
+void loop() {
+  Blynk.run();
+  timer.run();
+  
+  checkSteps();
+  }
+
+    if (irValue > 50000) {
+        avered = avered * frate + (double)redValue * (1.0 - frate);
+        aveir = aveir * frate + (double)irValue * (1.0 - frate);
+
+        sumredrms += (redValue - avered) * (redValue - avered);
+        sumirrms += (irValue - aveir) * (irValue - aveir);
+
+        if ((i % Num) == 0) {
+            double R = (sqrt(sumredrms) / avered) / (sqrt(sumirrms) / aveir);
+            spo2 = (int)(-45.060 * R * R + 30.354 * R + 94.845);
+
+            ESpO2 = FSpO2 * ESpO2 + (1.0 - FSpO2) * (double)spo2;
+
+            if (ESpO2 <= 100 && ESpO2 >= 80) {
+                spo2 = (int)ESpO2;
+            }
+
+            sumredrms = 0.0;
+            sumirrms = 0.0;
+            i = 0;
+        }
+        i++;
+    } else {
+        spo2 = 0;
+    }
+
+    // Read IR and Red Values
+    // ------------- MAX30102 READINGS ------------
+    mex.check();
+    uint32_t irValue = mex.getIR();
+    uint32_t redValue = mex.getRed();
+
+    // Pulse Rate
+    long currentTime = millis();
+
+    if (irValue > threshold && peakDetected == false) {
+        peakDetected = true;
+        long delta = currentTime - lastPeakTime;
+        lastPeakTime = currentTime;
+
+        if (delta > 300) {
+            bpm = 60 / (delta / 1000.0);
+
+            if (bpm > 40 && bpm < 200) {
+                pulseRate = (int)bpm;
+            }
+        }
+    }
+
+    if (irValue < threshold) {
+        peakDetected = false;
+    }
+
+    if (irValue > 10000) {
+        // SpO2
+
+        // DC Components
+        avered = avered * frate + (double)redValue * (1.0 - frate);
+        aveir = aveir * frate + (double)irValue * (1.0 - frate);
+
+        // AC Components
+        sumredrms += (redValue - avered) * (redValue - avered);
+        sumirrms += (irValue - aveir) * (irValue - aveir);
+
+        double rmsRed = sqrt(sumredrms / Num);
+        double rmsIR = sqrt(sumirrms / Num);
+
+        if (i % Num == 0) {
+            double R = (rmsRed / avered) / (rmsIR / aveir);
+            int calculatedSpo2 = (int)(-45.060 * R * R + 30.354 * R + 94.845);
+            ESpO2 = FSpO2 * ESpO2 + (1.0 - FSpO2) * calculatedSpo2;
+
+            if (ESpO2 <= 100 && ESpO2 >= 80)
+                spo2 = (int)ESpO2;
+
+            sumredrms = 0;
+            sumirrms = 0;
+            i = 0;
+        }
+    } else {
+        spo2 = 0;
+    }
+
+
+
+
+
+#include <Wire.h>
+
+// Libraries for IoT
+
+// Libraries for OLED Display
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// Health vitals library
+#include "MAX30105.h"
+#include "heartRate.h"
+#include "spo2_algorithm.h"
+
+#include <Adafruit_MLX90614.h>
+#include "SparkFunLSM6DS3.h"
+
+// Display size in pixels
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1); // Display what's on the screen
+MAX30105 mex; // Heart Rate & SPO2
+Adafruit_MLX90614 mlx = Adafruit_MLX90614(); // Temperature
+LSM6DS3 myIMU(I2C_MODE, 0x6A); // Steps
+
+// Heart rate
+const byte RATE_SIZE = 4;
+byte rates[RATE_SIZE];
+byte rateSpot = 0;
+long lastBeat = 0;
+float bpm;
+int beatAvg;
+int heartRate;
+
+// SPO2
+double avered = 0;
+double aveir = 0;
+double sumredrms = 0;
+double sumirrms = 0;
+int i = 0;
+
+const int Num = 100;
+const double frate = 0.95;
+const double FSpO2 = 0.7;
+
+double ESpO2 = 95.0;
+int spo2 = 0;
+
+// Temperature
+float temp = 0;
+unsigned long lastTempRead = 0;
+
+// Steps
+int steps = 0;
+unsigned long lastStepTime = 0;
+const int MIN_STEP_INTERVAL = 300;
+
+// -------- OLED Update Timer --------
+unsigned long lastOLEDUpdate = 0;
+
+// Front-End Interface
+static void healthVitals(int heartRate, int spo2, float temp, int steps) {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    
+    // Title
+    display.setCursor(0, 0);
+    display.println("Health Monitoring");
+
+    // Display Heart Rate and SPO2
+    display.setCursor(0, 12);
+    display.print("Heart Rate: ");
+    display.print(heartRate);
+    display.println(" BPM");
+
+    display.setCursor(0, 24);
+    display.print("SPO2: ");
+    display.print(spo2);
+    display.println(" %");
+
+    // Display Temperature
+    display.setCursor(0, 36);
+    display.print("Temp(C): ");
+    display.print(temp, 1);
+    display.println(" C");
+
+    // Display Steps
+    display.setCursor(0, 48);
+    display.print("Steps: ");
+    display.print(steps);
+
+    display.display();
+}
+
+void setup() {
+    Serial.begin(115200);
+    Wire.begin(5, 4);
+    Wire.setClock(400000);
+
+    // Check if the OLED Display is working
+    if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+        Serial.println("SSD1306 allocation failed");
+        for(;;) {
+            delay(10);
+        }
+    }
+
+    // Display setup
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    display.println("Initializing...");
+    display.display();
+    delay(1000);
+
+    if(!mex.begin()) { // Heart rate & SPO2 sensor
+        display.clearDisplay();
+        display.setCursor(0, 0);
+        display.println("Error, MAX30102 not connected");
+        for (;;) {
+            delay(10);
+        }
+    }
+
+    mex.setup();
+    mex.setPulseAmplitudeRed(0x24);
+    mex.setPulseAmplitudeIR(0x24);
+
+
+    if(!mlx.begin()) { // Temperature sensor
+        display.clearDisplay();
+        display.setCursor(0, 12);
+        display.println("Error, MLX90614 not connected");
+        display.display();
+        for (;;) {
+            delay(10);
+        }
+    }
+
+
+    if(!myIMU.begin()) { // Accelerometer sensor
+        display.clearDisplay();
+        display.setCursor(0, 24);
+        display.println("Error, LSM6DS3 not connected");
+        for (;;) {
+            delay(10);
+        }
+    }
+
+    // When the sensors are working
+    display.clearDisplay();
+    display.setCursor(0,0);
+    display.println("All sensors are OK!!!");
+    display.display();
+    delay(1000);
+
+}
+
+void loop() {
+
+    // ------------- TEMPERATURE READINGS -------------
+    if (millis() - lastTempRead > 1000) {
+        lastTempRead = millis();
+        temp = mlx.readObjectTempC();
+    }
+
+    // ------------- MAX30102 READINGS ------------
+    mex.check();
+    uint32_t irValue = mex.getIR();
+    uint32_t redValue = mex.getRed();
+
+    if (irValue > 10000) {
+        // Heart Rate
+        if (checkForBeat(irValue)) {
+            long now = millis()
+            long delta = now - lastBeat;
+            lastBeat = now;
+            
+            bpm = 60 / (delta / 1000.0);
+
+            if (bpm < 255 && bpm > 20) {
+                rates[rateSpot++] = (byte)bpm;
+                rateSpot %= RATE_SIZE;
+
+                beatAvg = 0;
+                for (byte x = 0; x < RATE_SIZE; x++)
+                    beatAvg += rates[x];
+                beatAvg /= RATE_SIZE;
+                heartRate = beatAvg;
+            }
+        }
+
+        // SpO2
+
+        // DC Components
+        avered = avered * frate + (double)redValue * (1.0 - frate);
+        aveir = aveir * frate + (double)irValue * (1.0 - frate);
+
+        // AC Components
+        sumredrms += (redValue - avered) * (redValue - avered);
+        sumirrms += (irValue - aveir) * (irValue - aveir);
+
+        if (i % Num == 0) {
+            double R = (sqrt(sumredrms) / avered) / (sqrt(sumirrms) / aveir);
+            int calculatedSpo2 = (int)(-45.060 * R * R + 30.354 * R + 94.845);
+            ESpO2 = FSpO2 * ESpO2 + (1.0 - FSpO2) * calculatedSpo2;
+
+            if (ESpO2 <= 100 && ESpO2 >= 80)
+                spo2 = (int)ESpO2;
+
+            sumredrms = 0;
+            sumirrms = 0;
+            i = 0;
+        }
+    } else {
+        
+        spo2 = 0;
+    }
+
+
+
+
+    // ------------- STEP COUNTING -------------
+    float accelX = myIMU.readFloatAccelX();
+    float accelY = myIMU.readFloatAccelY();
+    float accelZ = myIMU.readFloatAccelZ();
+
+    float accelMagnitude = sqrt(accelX * accelX + accelY * accelY + accelZ * accelZ);
+    float accelWithoutGravity = abs(accelMagnitude - 1.0);
+
+    if (accelWithoutGravity > 0.3 &&
+        (millis() - lastStepTime) > MIN_STEP_INTERVAL) {
+            steps++;
+            lastStepTime = millis();
+        }
+
+    // ------------- OLED UPDATE -------------
+    if(millis() - lastOLEDUpdate > 1000) {
+        lastOLEDUpdate = millis();
+        healthVitals(heartRate, spo2, temp, steps); // Displayed on OLED
+    }
+
+    delay(5); // Stability delay
+}

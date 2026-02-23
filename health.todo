@@ -1,0 +1,19 @@
+Main Process:
+    ✔ Setup for all the sensors @done(26-02-13 08:39)
+    ✔ OLED Display test @done(26-02-13 03:55)
+    ✔ Functions for Heart Rate & SPO2 @done(26-02-17 13:32)
+    ✔ Functions for Temperature @done(26-02-13 08:39)
+    [] Functions for Step Counter
+
+Alarm System:
+    [] Setup for the alarm
+    [] Sound Test
+
+FireBase Database Process:
+    [] Database test
+    [] Integrate Firebase with ESP32
+
+Calibration:
+    ✔ Heart Rate & SPO2 @done(26-02-20 14:37)
+    ✔ Temperature @done(26-02-20 14:37)
+    [] Steps
