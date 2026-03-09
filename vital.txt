@@ -1,12 +1,10 @@
 #define BLYNK_PRINT Serial
 
 // Fill in your Template ID, Device Name and Auth Token from the Blynk Dashboard
-#define BLYNK_TEMPLATE_ID "TMPLxxxxxx"
-#define BLYNK_DEVICE_NAME "Health Monitor"
-#define BLYNK_AUTH_TOKEN "YourAuthToken"
+#define BLYNK_TEMPLATE_ID "TMPL2hj3X21yt"
+#define BLYNK_TEMPLATE_NAME "Health Monitoring"
 
 #include <WiFi.h>
-#include <WiFiClient.h>
 #include <BlynkSimpleEsp32.h>
 #include <Wire.h>
 
@@ -98,29 +96,10 @@ void loop() {
     delay(500);
 }
 
-// Libraries for MAX30102
-// Ensure you have installed "SparkFun MAX3010x Pulse and Proximity Sensor Library" via Library Manager
-#include "MAX30105.h"
-#include "heartRate.h"
-
-// Libraries for OLED Display (SSD1306)
-// Ensure you have installed "Adafruit SSD1306" and "Adafruit GFX Library"
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
-
-// Library for Firebase (ESP32-C3 Compatible)
-// Ensure you have installed "Firebase Arduino Client Library for ESP8266 and ESP32" by Mobizt
-#include <Firebase_ESP_Client.h>
-
 // Provide the token generation process info.
 #include <addons/TokenHelper.h>
 // Provide the RTDB payload printing info and other helper functions.
 #include <addons/RTDBHelper.h>
-
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 64 // OLED display height, in pixels
-#define OLED_RESET    -1 // Reset pin # (or -1 if sharing Arduino reset pin)
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 // --- WiFi Credentials ---
 char ssid[] = "YourNetworkName";
@@ -695,4 +674,33 @@ void loop() {
     }
 
     delay(5); // Stability delay
+}
+
+void sendHealthData() {
+  int heartRate = random(50, 140);
+
+  Blynk.virtualWrite(V0, heartRate);
+
+  if (heartRate < 60) {
+    Blynk.setProperty(V0, "color", "#0000FF");  // Blue
+  }
+  else if (heartRate <= 100) {
+    Blynk.setProperty(V0, "color", "#00FF00");  // Green
+  }
+  else if (heartRate <= 130) {
+    Blynk.setProperty(V0, "color", "#FFA500");  // Orange
+  }
+  else {
+    Blynk.setProperty(V0, "color", "#FF0000");  // Red
+  }
+}
+
+if (spo2 >= 95) {
+  Blynk.setProperty(V1, "color", "#00FF00");  // Green
+}
+else if (spo2 >= 90) {
+  Blynk.setProperty(V1, "color", "#FFA500");  // Orange
+}
+else {
+  Blynk.setProperty(V1, "color", "#FF0000");  // Red
 }

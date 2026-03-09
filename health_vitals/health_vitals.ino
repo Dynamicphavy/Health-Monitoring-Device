@@ -1,6 +1,11 @@
 #include <Wire.h>
 
 // Libraries for IoT
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
+#include <FirebaseClient.h>
+#include "secrets.h"
 
 // Libraries for OLED Display
 #include <Adafruit_GFX.h>
@@ -17,6 +22,12 @@
 // Display size in pixels
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
+
+// User function
+void processData() {}
+
+// Authentication
+UserAuth user_auth(Web_API_KEY, USER_EMAIL, USER_PASS);
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1); // Display what's on the screen
 MAX30105 mex; // Heart Rate & SPO2
@@ -99,6 +110,19 @@ void setup() {
     Wire.begin(5, 4);
     Wire.setClock(400000);
 
+    // Connecting to WiFi
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    Serial.print("Connecting to WiFi");
+    while (WiFi.status() != WL_CONNECTED) {
+        Serial.print(".");
+        delay(500);
+    }
+    Serial.println("\n WiFi Connected!!!");
+
+    // Configure SSL Client
+
+    // Initialize Database
+
     // Check if the OLED Display is working
     if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
         Serial.println("SSD1306 allocation failed");
@@ -154,6 +178,8 @@ void setup() {
     display.println("All sensors are OK!!!");
     display.display();
     delay(500);
+
+    Blynk.begin(BLYNK_AUTH_TOKEN, WIFI_SSID, WIFI_PASSWORD);
 }
 
 void loop() {
@@ -188,4 +214,7 @@ void loop() {
         lastOLEDUpdate = millis();
         healthVitals(bpm, spo2, temp, steps); // Displayed on OLED
     }
+
+    // ------------- BLYNK PROCESS -------------
+    Blynk.run()
 }

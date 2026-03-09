@@ -9,8 +9,8 @@ Alarm System:
     [] Setup for the alarm
     [] Sound Test
 
-FireBase Database Process:
-    [] Database test
+Database Process:
+    [] Blynk Database test
     [] Integrate Firebase with ESP32
 
 Calibration:
