@@ -62,13 +62,13 @@ void setup() {
     }
 }
 
-        // Light Configuration
-        byte ledBrightness = 60;
-        byte sampleAverage = 4;
-        byte ledMode = 2;
-        int sampleRate = 100;
-        int pulseWidth = 411;
-        int adcRange = 4096;
+// Light Configuration
+byte ledBrightness = 60;
+byte sampleAverage = 4;
+byte ledMode = 2;
+int sampleRate = 100;
+int pulseWidth = 411;
+int adcRange = 4096;
 
 double avered = 0;
 double aveir = 0;
@@ -82,7 +82,6 @@ int i = 0;
 int Num = 100;
 
 void loop() {
-
     float ambientC = mlx.readAmbientTempC();
     float objectC = mlx.readObjectTempC();
 
@@ -150,26 +149,6 @@ double dailySumTemp = 0;
 long dailySumHR = 0;
 long dailyReadingsCount = 0;
 
-BlynkTimer timer;
-
-// --- Functions ---
-
-// Read Body Temperature from MAX30205
-float readBodyTemperature() {
-  Wire.beginTransmission(MAX30205_ADDRESS);
-  Wire.write(0x00); // Temperature register
-  Wire.endTransmission();
-  
-  Wire.requestFrom(MAX30205_ADDRESS, 2);
-  if (Wire.available() == 2) {
-    uint8_t msb = Wire.read();
-    uint8_t lsb = Wire.read();
-    int16_t rawTemp = ((msb << 8) | lsb) >> 3;
-    return rawTemp * 0.03125;
-  }
-  return 0.0;
-}
-
 // Step Counting Logic
 void checkSteps() {
   int x = analogRead(xPin);
@@ -185,25 +164,6 @@ void checkSteps() {
   } else if (mag < threshold - 500) {
     stepFlag = false;
   }
-}
-
-// Update OLED Display
-void updateDisplay(float temp, int hr, double spo2, int stepsVal) {
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 0);
-  display.println("Health Monitor");
-  display.setCursor(0, 16);
-  display.print("Temp: "); display.print(temp); display.println(" C");
-  display.setCursor(0, 28);
-  display.print("HR:   "); display.print(hr); display.println(" BPM");
-  display.setCursor(0, 40);
-  display.print("SpO2: "); display.print(spo2); display.println(" %");
-  display.setCursor(0, 52);
-  display.print("Steps: "); display.println(stepsVal);
-  display.display();
-}
 
 // Upload Daily Summary to Firebase
 void uploadDailyData() {
@@ -229,204 +189,6 @@ void uploadDailyData() {
   json.set("avg_hr", avgHR);
   json.set("total_steps", steps);
   json.set("uptime_ms", millis());
-
-  if (Firebase.RTDB.setJSON(&fbdo, path.c_str(), &json)) {
-    Serial.println("Firebase Upload Success");
-  } else {
-    Serial.print("Firebase Upload Failed: ");
-    Serial.println(fbdo.errorReason());
-  }
-
-  // Reset Daily Counters
-  dailySumTemp = 0;
-  dailySumHR = 0;
-  dailyReadingsCount = 0;
-  steps = 0; // Reset steps for the new day
-}
-
-// Send Data to Blynk and Update Display
-void sendSensorData() {
-  float tempC = readBodyTemperature();
-  Blynk.virtualWrite(V2, tempC);
-  Blynk.virtualWrite(V3, steps);
-  
-  if (beatAvg > 0) {
-    Blynk.virtualWrite(V0, beatAvg);
-    Blynk.virtualWrite(V1, spO2);
-  }
-  
-  updateDisplay(tempC, beatAvg, spO2, steps);
-
-  // --- Abnormal Vitals Alarm ---
-  if (millis() - lastAlertTime > alertInterval) {
-    bool alertTriggered = false;
-    if (tempC > 0 && (tempC < 36.5 || tempC > 37.3)) {
-      Blynk.logEvent("temp_alert", String("Abnormal Temp: ") + tempC + " C");
-      alertTriggered = true;
-    }
-    if (beatAvg > 0 && (beatAvg < 60 || beatAvg > 100)) {
-      Blynk.logEvent("hr_alert", String("Abnormal HR: ") + beatAvg + " BPM");
-      alertTriggered = true;
-    }
-    if (alertTriggered) lastAlertTime = millis();
-  }
-
-  // --- Daily Aggregation ---
-  if (tempC > 0 && beatAvg > 0) {
-    dailySumTemp += tempC;
-    dailySumHR += beatAvg;
-    dailyReadingsCount++;
-  }
-
-  // Check if 24 hours have passed
-  if (millis() - lastDailyUpload > dailyInterval) {
-    uploadDailyData();
-    lastDailyUpload = millis();
-  }
-}
-
-void setup() {
-  Serial.begin(115200);
-  
-  // Initialize Blynk
-  Blynk.config(BLYNK_AUTH_TOKEN);
-  Blynk.connectWifi(ssid, pass);
-
-  // Initialize I2C
-  Wire.begin(); // Uses default SDA/SCL for the board (GPIO 8/9 on C3 usually)
-
-  // Initialize OLED
-  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
-    Serial.println(F("SSD1306 allocation failed"));
-  } else {
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0,0);
-    display.println("Initializing...");
-    display.display();
-  }
-
-  // Initialize MAX30102
-  if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) {
-    Serial.println("MAX30102 not found.");
-  } else {
-    particleSensor.setup();
-    particleSensor.setPulseAmplitudeRed(0x0A);
-    particleSensor.setPulseAmplitudeGreen(0);
-  }
-
-  // Initialize Firebase
-  config.api_key = API_KEY;
-  config.database_url = DATABASE_URL;
-  
-  // Sign up anonymously
-  if (Firebase.signUp(&config, &auth, "", "")) {
-    Serial.println("Firebase Auth Success");
-    firebaseReady = true;
-  } else {
-    Serial.printf("Firebase Auth Failed: %s\n", config.signer.signupError.message.c_str());
-  }
-  
-  Firebase.begin(&config, &auth);
-  Firebase.reconnectWiFi(true);
-
-  // Setup Timer
-  timer.setInterval(1000L, sendSensorData);
-}
-
-void loop() {
-  Blynk.run();
-  timer.run();
-  
-  checkSteps();
-  }
-
-    if (irValue > 50000) {
-        avered = avered * frate + (double)redValue * (1.0 - frate);
-        aveir = aveir * frate + (double)irValue * (1.0 - frate);
-
-        sumredrms += (redValue - avered) * (redValue - avered);
-        sumirrms += (irValue - aveir) * (irValue - aveir);
-
-        if ((i % Num) == 0) {
-            double R = (sqrt(sumredrms) / avered) / (sqrt(sumirrms) / aveir);
-            spo2 = (int)(-45.060 * R * R + 30.354 * R + 94.845);
-
-            ESpO2 = FSpO2 * ESpO2 + (1.0 - FSpO2) * (double)spo2;
-
-            if (ESpO2 <= 100 && ESpO2 >= 80) {
-                spo2 = (int)ESpO2;
-            }
-
-            sumredrms = 0.0;
-            sumirrms = 0.0;
-            i = 0;
-        }
-        i++;
-    } else {
-        spo2 = 0;
-    }
-
-    // Read IR and Red Values
-    // ------------- MAX30102 READINGS ------------
-    mex.check();
-    uint32_t irValue = mex.getIR();
-    uint32_t redValue = mex.getRed();
-
-    // Pulse Rate
-    long currentTime = millis();
-
-    if (irValue > threshold && peakDetected == false) {
-        peakDetected = true;
-        long delta = currentTime - lastPeakTime;
-        lastPeakTime = currentTime;
-
-        if (delta > 300) {
-            bpm = 60 / (delta / 1000.0);
-
-            if (bpm > 40 && bpm < 200) {
-                pulseRate = (int)bpm;
-            }
-        }
-    }
-
-    if (irValue < threshold) {
-        peakDetected = false;
-    }
-
-    if (irValue > 10000) {
-        // SpO2
-
-        // DC Components
-        avered = avered * frate + (double)redValue * (1.0 - frate);
-        aveir = aveir * frate + (double)irValue * (1.0 - frate);
-
-        // AC Components
-        sumredrms += (redValue - avered) * (redValue - avered);
-        sumirrms += (irValue - aveir) * (irValue - aveir);
-
-        double rmsRed = sqrt(sumredrms / Num);
-        double rmsIR = sqrt(sumirrms / Num);
-
-        if (i % Num == 0) {
-            double R = (rmsRed / avered) / (rmsIR / aveir);
-            int calculatedSpo2 = (int)(-45.060 * R * R + 30.354 * R + 94.845);
-            ESpO2 = FSpO2 * ESpO2 + (1.0 - FSpO2) * calculatedSpo2;
-
-            if (ESpO2 <= 100 && ESpO2 >= 80)
-                spo2 = (int)ESpO2;
-
-            sumredrms = 0;
-            sumirrms = 0;
-            i = 0;
-        }
-    } else {
-        spo2 = 0;
-    }
-
-
-
 
 
 #include <Wire.h>

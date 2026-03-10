@@ -29,6 +29,11 @@ void processData() {}
 // Authentication
 UserAuth user_auth(Web_API_KEY, USER_EMAIL, USER_PASS);
 
+// Firebase components
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1); // Display what's on the screen
 MAX30105 mex; // Heart Rate & SPO2
 Adafruit_MLX90614 mlx = Adafruit_MLX90614(); // Temperature
@@ -119,9 +124,15 @@ void setup() {
     }
     Serial.println("\n WiFi Connected!!!");
 
-    // Configure SSL Client
-
     // Initialize Database
+    config.api_key = Web_API_KEY;
+    config.database_url = DATABASE_URL;
+
+    auth.user.email = USER_EMAIL;
+    auth.user.password = USER_PASS;
+
+    Firebase.begin(&config, &auth);
+    Firebase.reconnectWiFi(true);
 
     // Check if the OLED Display is working
     if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
@@ -213,6 +224,18 @@ void loop() {
     if(millis() - lastOLEDUpdate > 1000) {
         lastOLEDUpdate = millis();
         healthVitals(bpm, spo2, temp, steps); // Displayed on OLED
+
+        // Blynk data visualization
+        Blynk.virtualWrite(V0, bpm);
+        Blynk.virtualWrtie(V1, spo2);
+        Blynk.virtualWrite(V3, temp);
+        Blynk.virtualWrite(V4, steps);
+
+        // Firebase data storage
+        Firebase.RTDB.setInt(&fbdo, "/patients/device01/bpm", bpm);
+        Firebase.RTDB.setInt(&fbdo, "/patients/device01/spo2", spo2);
+        Firebase.RTDB.setFloat(&fbdo, "/patients/device01/temp", temp);
+        Firebase.RTDB.setInt(&fbdo, "/patients/device01/steps", steps);
     }
 
     // ------------- BLYNK PROCESS -------------
