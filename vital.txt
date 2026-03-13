@@ -466,3 +466,57 @@ else if (spo2 >= 90) {
 else {
   Blynk.setProperty(V1, "color", "#FF0000");  // Red
 }
+
+// Flowchart
+flowchart TD
+
+%% -----------------------
+%% POWER MANAGEMENT SECTION
+%% -----------------------
+A[Power Management<br>Battery / Charger] --> B[Voltage Regulation]
+B --> C[Signal Conditioning Unit]
+C --> D[Wearable Sensors<br>HR | SpO2 | Temp | Motion]
+
+%% -----------------------
+%% DATA ACQUISITION SECTION
+%% -----------------------
+D --> E[Microcontroller<br>ESP32 / PIC]
+E --> F[Data Filtering & Processing]
+F --> G[Feature Extraction]
+
+%% -----------------------
+%% COMMUNICATION SECTION
+%% -----------------------
+G --> H[Wireless Communication<br>Bluetooth / WiFi]
+H --> I[Mobile App / Gateway]
+I --> J[Cloud Server / IoT Platform]
+
+%% -----------------------
+%% CLOUD & ANALYTICS SECTION
+%% -----------------------
+J --> K[Cloud Data Storage]
+J --> L[Data Analytics Engine]
+L --> M[Fitness Tracking]
+L --> N[Preventive Health Monitoring]
+L --> O[Abnormality Detection]
+
+%% -----------------------
+%% ALERT & FEEDBACK SECTION
+%% -----------------------
+O --> P{Health Risk Detected?}
+P -- Yes --> Q[Send Alert Notification]
+Q --> R[Doctor / Caregiver]
+P -- No --> S[Normal Monitoring Continues]
+
+%% -----------------------
+%% USER INTERFACE SECTION
+%% -----------------------
+E --> T[OLED / LCD Display]
+T --> U[Real-time Health Status]
+
+%% -----------------------
+%% DATA LOGGING
+%% -----------------------
+K --> V[Historical Data Analysis]
+V --> W[Progress Reports & Insights]
+

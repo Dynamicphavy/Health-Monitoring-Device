@@ -50,15 +50,15 @@ int8_t validHeartRate;
 
 // Steps
 int steps = 0;
-float lastAccel = 0;
 unsigned long lastStepTime = 0;
-const int MIN_STEP_INTERVAL = 300;
+unsigned long stopDelay = 4000; // 4 seconds without steps
+unsigned long stepInterval = 300;
 
 // Timing
 unsigned long lastOLEDUpdate = 0;
 
 // Front-End Interface
-static void healthVitals (int bpm, int spo2, float temp, int steps) {
+static void healthVitals(int bpm, int spo2, float temp, int steps) {
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
@@ -98,16 +98,12 @@ void detectSteps() {
     float accelZ = myIMU.readFloatAccelZ();
 
     float accelMagnitude = sqrt(accelX * accelX + accelY * accelY + accelZ * accelZ);
-    float threshold = 1.1;
+    float threshold = 1.2;
 
-    if (accelMagnitude > threshold && lastAccel <= threshold) {
-        if (millis() - lastStepTime > MIN_STEP_INTERVAL) {
-            steps++;
-            lastStepTime = millis();
-        }
+    if (accelMagnitude > threshold && millis() - lastStepTime > stepInterval) {
+        steps++;
+        lastStepTime = millis();
     }
-
-    lastAccel = accelMagnitude;
 }
 
 void setup() {
@@ -227,15 +223,17 @@ void loop() {
 
         // Blynk data visualization
         Blynk.virtualWrite(V0, bpm);
-        Blynk.virtualWrtie(V1, spo2);
+        Blynk.virtualWrite(V1, spo2);
         Blynk.virtualWrite(V3, temp);
         Blynk.virtualWrite(V4, steps);
 
         // Firebase data storage
-        Firebase.RTDB.setInt(&fbdo, "/patients/device01/bpm", bpm);
-        Firebase.RTDB.setInt(&fbdo, "/patients/device01/spo2", spo2);
-        Firebase.RTDB.setFloat(&fbdo, "/patients/device01/temp", temp);
-        Firebase.RTDB.setInt(&fbdo, "/patients/device01/steps", steps);
+        unsigned long timestamp = millis();
+        String path = "patients/device01/history" + String(timestamp);
+        Firebase.RTDB.setInt(&fbdo, path + "/bpm", bpm);
+        Firebase.RTDB.setInt(&fbdo, path + "/spo2", spo2);
+        Firebase.RTDB.setFloat(&fbdo, path + "/temp", temp);
+        Firebase.RTDB.setInt(&fbdo, path + "/steps", steps);
     }
 
     // ------------- BLYNK PROCESS -------------
