@@ -520,3 +520,16 @@ T --> U[Real-time Health Status]
 K --> V[Historical Data Analysis]
 V --> W[Progress Reports & Insights]
 
+// Blynk data visualization
+Blynk.virtualWrite(V0, bpm);
+Blynk.virtualWrite(V1, spo2);
+Blynk.virtualWrite(V3, temp);
+Blynk.virtualWrite(V4, steps);
+
+// Firebase data storage
+unsigned long timestamp = millis();
+String path = "patients/device01/history" + String(timestamp);
+Firebase.RTDB.setInt(&fbdo, path + "/bpm", bpm);
+Firebase.RTDB.setInt(&fbdo, path + "/spo2", spo2);
+Firebase.RTDB.setFloat(&fbdo, path + "/temp", temp);
+Firebase.RTDB.setInt(&fbdo, path + "/steps", steps);

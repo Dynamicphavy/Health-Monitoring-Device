@@ -1,11 +1,6 @@
 #include <Wire.h>
 
 // Libraries for IoT
-#include <WiFi.h>
-#include <WiFiClient.h>
-#include <BlynkSimpleEsp32.h>
-#include <FirebaseClient.h>
-#include "secrets.h"
 
 // Libraries for OLED Display
 #include <Adafruit_GFX.h>
@@ -24,15 +19,10 @@
 #define SCREEN_HEIGHT 64
 
 // User function
-void processData() {}
 
 // Authentication
-UserAuth user_auth(Web_API_KEY, USER_EMAIL, USER_PASS);
 
 // Firebase components
-FirebaseData fbdo;
-FirebaseAuth auth;
-FirebaseConfig config;
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1); // Display what's on the screen
 MAX30105 mex; // Heart Rate & SPO2
@@ -92,43 +82,16 @@ static void healthVitals(int bpm, int spo2, float temp, int steps) {
     display.display();
 }
 
-void detectSteps() {
-    float accelX = myIMU.readFloatAccelX();
-    float accelY = myIMU.readFloatAccelY();
-    float accelZ = myIMU.readFloatAccelZ();
+void detectSteps() {}
 
-    float accelMagnitude = sqrt(accelX * accelX + accelY * accelY + accelZ * accelZ);
-    float threshold = 1.2;
-
-    if (accelMagnitude > threshold && millis() - lastStepTime > stepInterval) {
-        steps++;
-        lastStepTime = millis();
-    }
-}
+void alert() {}
 
 void setup() {
     Serial.begin(115200);
     Wire.begin(5, 4);
     Wire.setClock(400000);
 
-    // Connecting to WiFi
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    Serial.print("Connecting to WiFi");
-    while (WiFi.status() != WL_CONNECTED) {
-        Serial.print(".");
-        delay(500);
-    }
-    Serial.println("\n WiFi Connected!!!");
-
-    // Initialize Database
-    config.api_key = Web_API_KEY;
-    config.database_url = DATABASE_URL;
-
-    auth.user.email = USER_EMAIL;
-    auth.user.password = USER_PASS;
-
-    Firebase.begin(&config, &auth);
-    Firebase.reconnectWiFi(true);
+    // ------------- IOT SETUP ------------
 
     // Check if the OLED Display is working
     if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
@@ -185,8 +148,6 @@ void setup() {
     display.println("All sensors are OK!!!");
     display.display();
     delay(500);
-
-    Blynk.begin(BLYNK_AUTH_TOKEN, WIFI_SSID, WIFI_PASSWORD);
 }
 
 void loop() {
@@ -216,26 +177,8 @@ void loop() {
     // ------------- STEP COUNTING -------------
     detectSteps();
 
-    // ------------- OLED UPDATE -------------
-    if(millis() - lastOLEDUpdate > 1000) {
+    if (millis() - lastOLEDUpdate > 1000) {
         lastOLEDUpdate = millis();
         healthVitals(bpm, spo2, temp, steps); // Displayed on OLED
-
-        // Blynk data visualization
-        Blynk.virtualWrite(V0, bpm);
-        Blynk.virtualWrite(V1, spo2);
-        Blynk.virtualWrite(V3, temp);
-        Blynk.virtualWrite(V4, steps);
-
-        // Firebase data storage
-        unsigned long timestamp = millis();
-        String path = "patients/device01/history" + String(timestamp);
-        Firebase.RTDB.setInt(&fbdo, path + "/bpm", bpm);
-        Firebase.RTDB.setInt(&fbdo, path + "/spo2", spo2);
-        Firebase.RTDB.setFloat(&fbdo, path + "/temp", temp);
-        Firebase.RTDB.setInt(&fbdo, path + "/steps", steps);
     }
-
-    // ------------- BLYNK PROCESS -------------
-    Blynk.run()
 }
