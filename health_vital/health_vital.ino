@@ -18,6 +18,9 @@
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 
+// Piezo Buzzer
+#define BUZZER 25
+
 // User function
 
 // Authentication
@@ -33,16 +36,20 @@ LSM6DS3 myIMU(I2C_MODE, 0x6A); // Steps
 uint32_t irBuffer[100];
 uint32_t redBuffer[100];
 
+int32_t bufferLength = 100;
 int32_t spo2;
 int8_t validSPO2;
 int32_t heartRate;
 int8_t validHeartRate;
 
 // Steps
-int steps = 0;
+const float ACCEL_THRESHOLD = 1.2;
+const float ACCEL_VALLEY = 0.8;
+const unsigned long DEBOUNCE = 300;
+unsigned long StepCount = 0;
 unsigned long lastStepTime = 0;
-unsigned long stopDelay = 4000; // 4 seconds without steps
-unsigned long stepInterval = 300;
+bool peakDetected = false;
+float prevMagnitude = 1.0;
 
 // Timing
 unsigned long lastOLEDUpdate = 0;
@@ -70,7 +77,7 @@ static void healthVitals(int bpm, int spo2, float temp, int steps) {
 
     // Display Temperature
     display.setCursor(0, 36);
-    display.print("Temp(C): ");
+    display.print("Temp: ");
     display.print(temp, 1);
     display.println(" C");
 
@@ -82,14 +89,58 @@ static void healthVitals(int bpm, int spo2, float temp, int steps) {
     display.display();
 }
 
-void detectSteps() {}
+void countSteps() {
+    float ax = myIMU.readFloatAccelX();
+    float ay = myIMU.readFloatAccelY();
+    float az = myIMU.readFloatAccelZ();
 
-void alert() {}
+    // Total Acceleration Magnitude
+    float accelMagnitude = sqrt(ax * ax + ay * ay + az * az);
+
+    // Peak Detection
+    if (!peakDetected && accelMagnitude > ACCEL_THRESHOLD && prevMagnitude <= ACCEL_THRESHOLD) {
+        if (millis() - lastStepTime > DEBOUNCE) {
+            StepCount++;
+            steps = StepCount;
+            lastStepTime = millis();
+            peakDetected = true;
+        }
+    }
+
+    // Valley Detection (Reset)
+    if (peakDetected && accelMagnitude < ACCEL_VALLEY) {
+        peakDetected = false;
+    }
+
+    prevMagnitude = accelMagnitude;
+}
+
+void beepAlert() {
+    digitalWrite(BUZZER, HIGH);
+    delay(100);
+    digitalWrite(BUZZER, LOW);
+    delay(100);
+} 
+
+void alert(int bpm, int spo2, float temp) {
+    if (bpm < 50 || bpm < 120) {
+        beepAlert();
+    }
+    if (spo2 < 90 && spo2 > 0) {
+        beepAlert();
+    }
+    if (temp < 37.5) {
+        beepAlert();
+    }
+}
 
 void setup() {
     Serial.begin(115200);
     Wire.begin(5, 4);
     Wire.setClock(400000);
+
+    // ------------- BUZZER SETUP ------------
+    pinMode(BUZZER, OUTPUT);
 
     // ------------- IOT SETUP ------------
 
@@ -164,7 +215,15 @@ void loop() {
     uint32_t irValue = irBuffer[99];
     bool skinDetected = irValue > 50000;
 
-    maxim_heart_rate_and_oxygen_saturation(irBuffer, 100, redBuffer, &spo2, &validSPO2, &heartRate, &validHeartRate);
+    maxim_heart_rate_and_oxygen_saturation(
+        irBuffer,
+        bufferLength,
+        redBuffer,
+        &spo2,
+        &validSPO2,
+        &heartRate,
+        &validHeartRate
+    );
 
     int bpm = (skinDetected && validHeartRate) ? heartRate : 0;
     int ESPO2 = (skinDetected && validSPO2 && spo2 > 0) ? spo2 : 0;
@@ -175,7 +234,10 @@ void loop() {
     temp = temp + 0.5;
 
     // ------------- STEP COUNTING -------------
-    detectSteps();
+    countSteps();
+
+    // ------------- ALERT SYSTEM -------------
+    alert(bpm, spo2, temp);
 
     if (millis() - lastOLEDUpdate > 1000) {
         lastOLEDUpdate = millis();
