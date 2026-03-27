@@ -3,17 +3,17 @@ Main Process:
     ✔ OLED Display test @done(26-02-13 03:55)
     ✔ Functions for Heart Rate & SPO2 @done(26-02-17 13:32)
     ✔ Functions for Temperature @done(26-02-13 08:39)
-    [] Functions for Step Counter
+    ✔ Functions for Step Counter @done(26-03-27 09:47)
 
 Alarm System:
-    [] Setup for the alarm
+    ✔ Setup for the alarm @done(26-03-27 09:47)
     [] Sound Test
 
 Database Process:
-    [] Blynk Database test
+    [] Build a Web Application
     [] Integrate Firebase with ESP32
 
 Calibration:
     ✔ Heart Rate & SPO2 @done(26-02-20 14:37)
     ✔ Temperature @done(26-02-20 14:37)
-    [] Steps
+    ✔ Steps @done(26-03-27 09:47)

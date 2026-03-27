@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <title>Health Monitoring</title>
+</head>
+<body>
+    <div class="main">
+        <h1>HEALTH MONITORING</h1>
+        <div class="vital">
+            <div class="vit">
+                <!-- Heart Rate -->
+                <div class="vit1">
+                    <h3>Heart Rate (BPM)</h3>
+                    <span id="HR">0</span>
+                </div>
+
+                <!-- Temperature -->
+                <div class="vit1">
+                    <h3>Body Temperature (C)</h3>
+                    <span id="Temp">0</span>
+                </div>
+            </div>
+
+            <div class="vit">
+                <!-- SPO2 -->
+                <div class="vit1">
+                    <h3>Blood Oxygen Levels (%)</h3>
+                    <span id="SPO2">0</span>
+                </div>
+
+                <!-- Steps -->
+                <div class="vit1">
+                    <h3>Steps</h3>
+                    <span id="Steps">0</span>
+                </div>
+            </div>
+        </div>
+        <div class="vital" id="vit-sty">
+            <!-- Heart Rate Spikes -->
+            <div class="spike" id="graph"></div>
+        </div>
+    </div>
+</body>
+</html>

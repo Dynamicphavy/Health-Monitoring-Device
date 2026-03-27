@@ -113,24 +113,6 @@ FirebaseAuth auth;
 FirebaseConfig config;
 bool firebaseReady = false;
 
-// --- Sensor Objects & Variables ---
-
-// 1. MAX30102 (Heart Rate & SpO2)
-MAX30105 particleSensor;
-long lastBeat = 0; // Time at which the last beat occurred
-float beatsPerMinute;
-int beatAvg;
-double spO2 = 98.0; // Default/Placeholder
-
-// 2. MAX30205 (Body Temperature)
-#define MAX30205_ADDRESS 0x48
-
-// 3. ADXL335 (Accelerometer / Step Counter)
-// UPDATED FOR ESP32-C3: Use ADC1 pins (GPIO 0-4)
-const int xPin = 0; // Analog Pin for X (GPIO 0 on C3)
-const int yPin = 1; // Analog Pin for Y (GPIO 1 on C3)
-const int zPin = 2; // Analog Pin for Z (GPIO 2 on C3)
-
 int steps = 0;
 bool stepFlag = false;
 int threshold = 500; 
